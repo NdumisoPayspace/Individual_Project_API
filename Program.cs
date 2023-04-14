@@ -1,9 +1,23 @@
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("weatherPolicy",
+        policy =>
+        {
+            policy.WithOrigins("https://localhost:7195/Weather")
+            .AllowAnyHeader()
+            .AllowAnyOrigin()
+            .AllowAnyMethod();
+        });
+});
+
 builder.Services.AddControllersWithViews();
 
 builder.Services.AddHttpClient();
+
+builder.Services.AddMemoryCache();
 
 var app = builder.Build();
 
@@ -19,6 +33,8 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 
 app.UseRouting();
+
+app.UseCors();
 
 app.UseAuthorization();
 

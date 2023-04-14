@@ -1,5 +1,7 @@
 ﻿using Individual_Project_API.Models;
+using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 using Newtonsoft.Json;
 
 namespace Individual_Project_API.Controllers
@@ -7,12 +9,15 @@ namespace Individual_Project_API.Controllers
     public class WeatherForecastController : Controller
     {
         private readonly IHttpClientFactory httpClientFactory;
+        private readonly IMemoryCache memoryCache;
 
-        public WeatherForecastController(IHttpClientFactory httpClientFactory)
+        public WeatherForecastController(IHttpClientFactory httpClientFactory, IMemoryCache memoryCache)
         {
             this.httpClientFactory = httpClientFactory;
+            this.memoryCache = memoryCache;
         }
 
+        [EnableCors("weatherPolicy")]
         [HttpGet("GetWeatherForecast/{city}")]
         public async Task<string> Get(string city) 
         {
@@ -20,17 +25,47 @@ namespace Individual_Project_API.Controllers
 
             var httpClient = httpClientFactory.CreateClient();
 
-            var url = $"https://api.weatherapi.com/v1/current.json?key=0e75156b69a14c10819131239231204&q={city}";
+            var url = $"https://api.weatherapi.com/v1/forecast.json?key=0e75156b69a14c10819131239231204&q={city}&days=10";
+
+            var weatherForecastList = memoryCache.Get<List<WeatherForecast>>("Weather");
+
+            if (weatherForecastList != null && city == weatherForecastList[0].name)
+            {
+                var weatherForecastJson = JsonConvert.SerializeObject(weatherForecastList);
+
+                return weatherForecastJson;
+            }
 
             try
             {
+                weatherForecastList = new List<WeatherForecast>();
+
                 var response = await httpClient.GetStringAsync(url);
 
-                var weather = JsonConvert.DeserializeObject<Rootobject>(response);
+                var weatherObject = JsonConvert.DeserializeObject<Rootobject>(response);
 
-                Console.WriteLine($"The weather is {weather.location.country}");
+                foreach (var dailyForecast in weatherObject.forecast.forecastday)
+                {
+                        var weatherForecast = new WeatherForecast();
 
-                return response;
+                        weatherForecast.name = weatherObject.location.name;
+                        weatherForecast.region = weatherObject.location.region;
+                        weatherForecast.country = weatherObject.location.country;
+                        weatherForecast.date = dailyForecast.date;
+                        weatherForecast.mintemp_c = dailyForecast.day.mintemp_c;
+                        weatherForecast.maxtemp_c = dailyForecast.day.maxtemp_c;
+                        weatherForecast.avgtemp_c = dailyForecast.day.avgtemp_c;
+                        weatherForecast.maxwind_kph = dailyForecast.day.maxwind_kph;
+                        weatherForecast.avghumidity = dailyForecast.day.avghumidity;
+
+                        weatherForecastList.Add(weatherForecast);
+                }
+
+                memoryCache.Set("Weather", weatherForecastList, TimeSpan.FromDays(1));
+
+                var weatherForecastJson = JsonConvert.SerializeObject(weatherForecastList);
+
+                return weatherForecastJson;
             }
             catch (Exception e)
             {
@@ -39,10 +74,5 @@ namespace Individual_Project_API.Controllers
 
             return errorString;
         }
-/*
-        public IActionResult Index()
-        {
-            return View();
-        }*/
     }
 }
